@@ -1,0 +1,96 @@
+{
+  "suite": "trace",
+  "total": 2527,
+  "done": 2527,
+  "ok": 2236,
+  "errors": 291,
+  "skipped": 0,
+  "rendered": 163,
+  "latency": {
+    "p50": 1043,
+    "p90": 8201,
+    "p95": 11264,
+    "p99": 24917,
+    "mean": 2883
+  },
+  "judged": 2235,
+  "score": 66.8390201224847,
+  "recall": null,
+  "f1": null,
+  "categories": {
+    "commerce": [
+      226,
+      300
+    ],
+    "community_social": [
+      218,
+      300
+    ],
+    "finance_filings": [
+      0,
+      300
+    ],
+    "jobs": [
+      243,
+      300
+    ],
+    "legal_regulatory": [
+      204,
+      300
+    ],
+    "news": [
+      240,
+      300
+    ],
+    "other": [
+      205,
+      300
+    ],
+    "research": [
+      197,
+      300
+    ],
+    "software_docs": [
+      115,
+      127
+    ]
+  },
+  "board": [
+    {
+      "name": "context.dev",
+      "ours": false,
+      "score": 87.01079031787692,
+      "recall": null,
+      "f1": null,
+      "p50_ms": 1753,
+      "p95_ms": 8909
+    },
+    {
+      "name": "Keenable",
+      "ours": false,
+      "score": 84.15893846602509,
+      "recall": null,
+      "f1": null,
+      "p50_ms": 1271,
+      "p95_ms": 16780
+    },
+    {
+      "name": "Firecrawl",
+      "ours": false,
+      "score": 82.25663458734324,
+      "recall": null,
+      "f1": null,
+      "p50_ms": 1595,
+      "p95_ms": 11154
+    },
+    {
+      "name": "Exa",
+      "ours": false,
+      "score": 79.05803441236513,
+      "recall": null,
+      "f1": null,
+      "p50_ms": 1194,
+      "p95_ms": 18088
+    }
+  ]
+}

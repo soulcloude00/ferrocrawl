@@ -1,0 +1,29 @@
+[package]
+name = "ferrocrawl-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "ferrocrawl"
+
+[dependencies]
+anyhow = "1"
+chromiumoxide = "0.9"
+csv = "1.4.0"
+ego-tree = "0.11.1"
+encoding_rs = "0.8.44"
+futures = "0.3"
+htmd = "0.5"
+lol_html = "3"
+moka = { version = "0.12", features = ["future"] }
+regex = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "http2", "gzip", "brotli", "zstd", "deflate", "charset"] }
+scraper = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+texting_robots = "0.2"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+url = { version = "2", features = ["serde"] }

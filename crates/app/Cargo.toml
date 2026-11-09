@@ -1,0 +1,18 @@
+[package]
+name = "ferrocrawl-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ferrocrawl-app"
+path = "src/main.rs"
+
+[dependencies]
+ferrocrawl-core = { path = "../core" }
+# Rune is pre-release: pin a `dev` rev (that branch is never rewritten). Same rev as rune-music.
+rune = { git = "https://github.com/anomalyco/rune", rev = "d751f07106eac47bdd4e33756dee71e1f593c9e2" }
+rune-kit = { git = "https://github.com/anomalyco/rune", rev = "d751f07106eac47bdd4e33756dee71e1f593c9e2", features = ["markdown"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+mimalloc = "0.1"

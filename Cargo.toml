@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/cli", "crates/app"]
+default-members = ["crates/core", "crates/cli"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "LicenseRef-Proprietary"
+publish = false
+
+# Plain release builds stay light: LTO with one codegen unit needs several GB of RAM to link the
+# GPU stack, which took an 8 GB laptop out of memory. `--profile dist` is the fully optimized build.
+[profile.release]
+codegen-units = 16
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
