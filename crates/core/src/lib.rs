@@ -141,9 +141,12 @@ impl Engine {
         let http_timeout = if opts.render == Render::Auto { timeout.min(Duration::from_secs(8)) } else { timeout };
         let got = match fetch::get(&self.client, url, http_timeout).await {
             Ok(g) => g,
+            // No DNS record, no TCP connection: the browser can't reach the host either, and
+            // trying costs up to 40 s (queueing for a tab, then a render that times out).
+            Err(e) if unreachable(&e) => return Err(e),
             Err(e) if opts.render == Render::Auto => {
                 tracing::debug!("plain fetch of {url} failed ({e:#}); trying the browser");
-                return self.load_fallback(url, opts, true).await.map_err(|re| e.context(format!("browser fallback: {re:#}")));
+                return self.load_fallback(url, opts, Fallback::Only).await.map_err(|re| e.context(format!("browser fallback: {re:#}")));
             }
             Err(e) => return Err(e),
         };
@@ -160,6 +163,10 @@ impl Engine {
         }
         let is_html = got.content_type.as_deref().is_none_or(|c| c.contains("html") || c.contains("xml"));
         if !is_html {
+            // An error status with a short body ("Not Found", "Forbidden") is the error, not content.
+            if got.status >= 400 && extract::words(&got.body) < 50 {
+                bail!("HTTP {}", got.status);
+            }
             // JSON, plain text, Markdown: the body is the content.
             let metadata = Metadata {
                 source_url: url.to_string(),
@@ -182,13 +189,30 @@ impl Engine {
         }
         // A challenge screen is a wall. A 4xx status alone is not: plenty of sites send the real
         // page with a 403 or 404, so the body decides.
-        let challenge = extract::is_challenge(&got.body.to_ascii_lowercase());
+        let lower = got.body.to_ascii_lowercase();
+        let challenge = extract::is_challenge(&lower);
         let blocked = challenge || matches!(got.status, 401 | 403 | 429 | 503);
+        // A hard block (a captcha wall, a WAF deny page) answers a browser from this machine the
+        // same way; only JavaScript challenges are worth a render.
+        let hard = blocked && got.status >= 400 && extract::is_hard_block(&lower);
+        drop(lower);
         let (page, needs_js) = build(url, &got.url, got.status, got.content_type, got.body, false, fetch_ms, opts).await?;
+        if hard {
+            bail!("blocked by the site (HTTP {})", page.metadata.status_code);
+        }
         if opts.render == Render::Auto && (needs_js || blocked) {
-            // An app shell has nothing without the browser, so it may queue for a tab; a blocked
-            // page only gets one if a tab is free right now.
-            match self.load_fallback(url, opts, needs_js).await {
+            // An app shell has nothing without the browser, so it may queue for a tab. So may a
+            // blocked page whose response is only a block screen (Shopify answers bots with a 429):
+            // the browser is its one chance. A blocked page that still sent real text only gets a
+            // tab if one is free right now.
+            let wait = if needs_js {
+                Fallback::Only
+            } else if extract::failure_page(&page.text).is_some() || extract::words(&page.text) < 50 {
+                Fallback::Blocked
+            } else {
+                Fallback::Optional
+            };
+            match self.load_fallback(url, opts, wait).await {
                 // Use the rendered page only when it is better: real content, and more of it.
                 Ok(p) if extract::failure_page(&p.text).is_none() && p.text.len() > page.text.len() => return Ok(p),
                 Ok(_) => {}
@@ -207,12 +231,15 @@ impl Engine {
         Ok(page)
     }
 
-    /// The browser as a fallback in auto mode, within 15 s. When the plain fetch got something
-    /// (`only_option` false) it isn't worth queueing for: give up if no tab frees within 3 s.
-    /// When the plain fetch got nothing, wait for a tab inside the same budget.
-    async fn load_fallback(&self, url: &str, opts: &ScrapeOptions, only_option: bool) -> Result<Page> {
+    /// The browser as a fallback in auto mode: a render of up to 15 s, after waiting for a tab
+    /// as long as `how` says it's worth (see [`Fallback`]).
+    async fn load_fallback(&self, url: &str, opts: &ScrapeOptions, how: Fallback) -> Result<Page> {
         let timeout = Duration::from_millis(opts.timeout_ms.max(1000));
-        let tab_wait = if only_option { timeout.min(Duration::from_secs(25)) } else { Duration::from_millis(300) };
+        let tab_wait = match how {
+            Fallback::Only => timeout.min(Duration::from_secs(25)),
+            Fallback::Blocked => timeout.min(Duration::from_secs(8)),
+            Fallback::Optional => Duration::from_millis(300),
+        };
         // The budget covers the render itself; time spent queueing for a tab comes on top.
         self.load_rendered_with(url, opts, Some(tab_wait), tab_wait + timeout.min(Duration::from_secs(15))).await
     }
@@ -232,6 +259,30 @@ impl Engine {
         let fetch_ms = t0.elapsed().as_millis() as u64;
         Ok(build(url, &r.url, 200, Some("text/html".into()), r.html, true, fetch_ms, opts).await?.0)
     }
+}
+
+/// How much a browser render is worth queueing for.
+#[derive(Clone, Copy)]
+enum Fallback {
+    /// The plain fetch got nothing usable (an app shell, no response at all).
+    Only,
+    /// The plain fetch got a block screen: the browser is the only way in, but most blocks hold.
+    Blocked,
+    /// The plain fetch got real text; a render only if a tab is free now.
+    Optional,
+}
+
+/// True when the host can't be reached at all (DNS failure, refused or timed-out TCP connect).
+/// TLS and HTTP/2 errors don't count: Chromium's network stack sometimes gets through those.
+fn unreachable(e: &anyhow::Error) -> bool {
+    let m = format!("{e:#}").to_ascii_lowercase();
+    if ["tls", "ssl", "certificate", "handshake", "http2"].iter().any(|k| m.contains(k)) {
+        return false;
+    }
+    ["dns error", "failed to lookup address", "tcp connect error", "connection refused", "no route to host", "network is unreachable"]
+        .iter()
+        .any(|k| m.contains(k))
+        || (m.contains("(connect)") && m.contains("timed out"))
 }
 
 /// A PDF's text, converted on the blocking pool.
@@ -300,4 +351,21 @@ async fn build(
         Ok((page, needs_js))
     })
     .await?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unreachable;
+
+    #[test]
+    fn unreachable_hosts_skip_the_browser() {
+        let e = |m: &str| anyhow::anyhow!("{m}");
+        assert!(unreachable(&e("GET http://x/: error sending request for url (http://x/): client error (Connect): operation timed out")));
+        assert!(unreachable(&e("GET http://x/: client error (Connect): tcp connect error: deadline has elapsed")));
+        assert!(unreachable(&e("GET http://x/: client error (Connect): dns error: failed to lookup address information")));
+        // The browser may get through these.
+        assert!(!unreachable(&e("GET http://x/: error sending request for url (http://x/): operation timed out")));
+        assert!(!unreachable(&e("GET http://x/: client error (SendRequest): http2 error: stream error received")));
+        assert!(!unreachable(&e("GET https://x/: client error (Connect): invalid peer certificate: UnknownIssuer")));
+    }
 }

@@ -305,3 +305,50 @@ mod tests {
         assert!(md.contains("### Abstract") && md.contains("We measure how quickly") && md.contains("Lee, A."), "{md}");
     }
 }
+
+static SCRIPT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<script\b([^>]*)>(.*?)</script>").unwrap());
+static STATE_TEXT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#""(text|simpleText|title|description|content|name|body|caption|label|headline|summary|subtitle|message|alt|plainText|articleBody|value)"\s*:\s*"((?:[^"\\]|\\.){12,3000})""#).unwrap()
+});
+
+/// Readable strings from a page's inline application state (`ytInitialData`, `__NEXT_DATA__`,
+/// hydration blobs), for pages whose HTML body came back nearly empty: the app draws its text
+/// from that state with JavaScript. Only prose-like values under text-ish keys are kept, never
+/// code, URLs or markup, and only ones the Markdown doesn't already have.
+pub fn state_text(raw: &str, markdown: &str) -> Option<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<String> = Vec::new();
+    let mut total = 0;
+    for m in SCRIPT.captures_iter(raw) {
+        let (attrs, body) = (&m[1], &m[2]);
+        if attrs.contains("src=") || body.len() < 200 {
+            continue;
+        }
+        for k in STATE_TEXT.captures_iter(body) {
+            let Ok(v) = serde_json::from_str::<String>(&format!("\"{}\"", &k[2])) else { continue };
+            let v = v.split_whitespace().collect::<Vec<_>>().join(" ");
+            let code_like = ["http", "{", "}", "=>", "function", "</", "\\u", "px;", "var("].iter().any(|c| v.contains(c));
+            if v.split(' ').count() < 3 || code_like || markdown.contains(&v) || !seen.insert(v.clone()) {
+                continue;
+            }
+            total += v.len();
+            out.push(v);
+            if total > 40_000 {
+                break;
+            }
+        }
+    }
+    (out.iter().map(|s| s.split(' ').count()).sum::<usize>() >= 30).then(|| out.join("\n\n"))
+}
+
+#[cfg(test)]
+mod state_tests {
+    #[test]
+    fn reads_prose_from_inline_app_state() {
+        let html = r#"<script>var ytInitialData = {"videoDetails":{"title":"How to repot a fiddle leaf fig","shortDescription":"x"},"description":{"simpleText":"In this video we show how to repot a fiddle leaf fig without hurting the roots, which soil to use, and how often to water it after."},"comments":[{"text":"This saved my plant, thank you so much for the clear steps!"},{"text":"What size pot did you move it into? Mine is about two feet tall now."}],"url":"https://example.com/watch?v=1","css":"{color:red}"}</script>"#;
+        let t = super::state_text(html, "").expect("state text");
+        assert!(t.contains("repot a fiddle leaf fig without hurting the roots"));
+        assert!(t.contains("This saved my plant"));
+        assert!(!t.contains("https://") && !t.contains("color:red"));
+    }
+}

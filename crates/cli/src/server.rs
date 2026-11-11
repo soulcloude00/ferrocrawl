@@ -4,6 +4,8 @@
 //! - `POST /v1/crawl`  `{ "url": "...", ...CrawlOptions }` → NDJSON stream, one event per page,
 //!   then `{ "type": "done", ...summary }`
 //! - `POST /v1/map`    `{ "url": "...", ...MapOptions }` → `{ success, links }`
+//! - `POST /v1/batch/scrape` `{ "urls": [...], ...ScrapeOptions }` → `{ success, data: [Document | {error}] }`,
+//!   16 pages in flight, results in request order
 //!
 //! Set `FERROCRAWL_API_KEY` to require `Authorization: Bearer <key>`.
 
@@ -39,6 +41,7 @@ pub async fn serve(engine: Arc<Engine>, addr: &str) -> Result<()> {
         .route("/v1/scrape", post(scrape))
         .route("/v1/crawl", post(crawl))
         .route("/v1/map", post(map))
+        .route("/v1/batch/scrape", post(batch_scrape))
         .layer(middleware::from_fn(auth))
         .with_state(engine);
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -106,4 +109,32 @@ async fn crawl(State(engine): State<App>, Json(req): Json<WithUrl<CrawlOptions>>
         .header(header::CONTENT_TYPE, "application/x-ndjson")
         .body(body)
         .unwrap()
+}
+
+#[derive(Deserialize)]
+struct WithUrls {
+    urls: Vec<String>,
+    #[serde(flatten)]
+    opts: ScrapeOptions,
+}
+
+async fn batch_scrape(State(engine): State<App>, Json(req): Json<WithUrls>) -> Response {
+    if req.urls.len() > 1000 {
+        return fail(StatusCode::BAD_REQUEST, "at most 1000 urls per batch");
+    }
+    let opts = Arc::new(req.opts);
+    let data: Vec<serde_json::Value> = futures::stream::iter(req.urls)
+        .map(|u| {
+            let (engine, opts) = (engine.clone(), opts.clone());
+            async move {
+                match engine.scrape(&u, &opts).await {
+                    Ok(doc) => serde_json::to_value(doc).unwrap_or_default(),
+                    Err(e) => json!({ "url": u, "error": format!("{e:#}") }),
+                }
+            }
+        })
+        .buffered(16)
+        .collect()
+        .await;
+    Json(json!({ "success": true, "data": data })).into_response()
 }

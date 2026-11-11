@@ -1,4 +1,6 @@
 mod bench;
+mod intro_cmd;
+mod mcp;
 mod server;
 
 use std::io::Write;
@@ -127,6 +129,19 @@ enum Cmd {
         #[arg(short, long, default_value = "127.0.0.1:3002")]
         addr: String,
     },
+    /// Warm intros: import networks, harvest public pages, find who can introduce you.
+    Intro {
+        /// Graph database (default $FERROCRAWL_INTRO_DB or ~/.local/share/ferrocrawl/intro.db).
+        #[arg(long, global = true)]
+        db: Option<PathBuf>,
+        #[command(subcommand)]
+        cmd: intro_cmd::IntroCmd,
+    },
+    /// Run an MCP server on stdio for AI agents: scrape, batch_scrape, crawl, map and intro tools.
+    Mcp {
+        #[arg(long)]
+        db: Option<PathBuf>,
+    },
     /// Run public scrape benchmarks (tinyfish, webcrawlerapi, trace) and compare with published results.
     Bench {
         #[command(subcommand)]
@@ -137,7 +152,7 @@ enum Cmd {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn,chromiumoxide=error".into()))
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn,chromiumoxide=error,html5ever=error".into()))
         .with_writer(std::io::stderr)
         .init();
     let cli = Cli::parse();
@@ -242,6 +257,8 @@ async fn main() -> Result<()> {
         }
         Cmd::Serve { addr } => server::serve(engine, &addr).await?,
         Cmd::Bench { cmd } => bench::main(engine, cmd).await?,
+        Cmd::Intro { db, cmd } => intro_cmd::main(engine, db, cmd).await?,
+        Cmd::Mcp { db } => mcp::serve(engine, db).await?,
     }
     Ok(())
 }

@@ -55,7 +55,7 @@ pub fn run_button(s: &App, k: &Kit) -> El {
     if s.bench.running() {
         Button::new("Stop").variant(ButtonVariant::Danger).on_press(|s: &mut App| s.bench.stop()).build(k)
     } else {
-        Button::new(format!("Run {}", MODES[3].to_lowercase())).variant(ButtonVariant::Submit).on_press(|s: &mut App| s.start_bench()).build(k)
+        Button::new(format!("Run {}", MODES[4].to_lowercase())).variant(ButtonVariant::Submit).on_press(|s: &mut App| s.start_bench()).build(k)
     }
 }
 

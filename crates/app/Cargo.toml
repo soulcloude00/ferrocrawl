@@ -3,6 +3,7 @@ name = "ferrocrawl-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [[bin]]
@@ -11,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 ferrocrawl-core = { path = "../core" }
+ferrocrawl-intro = { path = "../intro" }
 # Rune is pre-release: pin a `dev` rev (that branch is never rewritten). Same rev as rune-music.
 rune = { git = "https://github.com/anomalyco/rune", rev = "d751f07106eac47bdd4e33756dee71e1f593c9e2" }
 rune-kit = { git = "https://github.com/anomalyco/rune", rev = "d751f07106eac47bdd4e33756dee71e1f593c9e2", features = ["markdown"] }

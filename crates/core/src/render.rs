@@ -19,6 +19,10 @@ use tokio::sync::{Mutex, Semaphore};
 
 const NAV_CAP: Duration = Duration::from_secs(8);
 const CHALLENGE_CAP: Duration = Duration::from_secs(4);
+/// How often the render loop reads the page's text.
+const POLL: Duration = Duration::from_millis(150);
+/// How long a page with almost no text gets to fill in before we stop waiting.
+const SHORT_WAIT: Duration = Duration::from_secs(6);
 /// Chromium's own cap (`FERROCRAWL_CHROME_MEM` overrides).
 const CHROME_MEM: &str = "1200M";
 
@@ -107,11 +111,41 @@ impl Renderer {
                 return Err(anyhow!("browser not responding"));
             }
         };
+        block_heavy(&page).await;
         let result = tokio::time::timeout(timeout, load(&page, url, wait_for)).await;
         // Close the tab whatever happened; a leaked tab keeps its renderer's memory.
         let _ = tokio::time::timeout(Duration::from_secs(3), page.close()).await;
         result.map_err(|_| anyhow!("render timed out after {timeout:?}"))?
     }
+}
+
+/// Requests a render never needs: fonts, audio and video, and the ad and analytics networks
+/// that keep a page busy long after its content is in. (Images are off for the whole browser.)
+const BLOCKED: &[&str] = &[
+    "*://*:*/*.woff2", "*://*:*/*.woff", "*://*:*/*.ttf", "*://*:*/*.otf", "*://*:*/*.eot",
+    "*://*:*/*.mp4", "*://*:*/*.webm", "*://*:*/*.mp3", "*://*:*/*.m4a", "*://*:*/*.ogg", "*://*:*/*.m3u8",
+    "*://*.doubleclick.net:*/*", "*://*.googlesyndication.com:*/*", "*://*.googletagservices.com:*/*",
+    "*://*.google-analytics.com:*/*", "*://*.googletagmanager.com:*/*", "*://*.adservice.google.com:*/*",
+    "*://*.amazon-adsystem.com:*/*", "*://*.adnxs.com:*/*", "*://*.criteo.com:*/*", "*://*.criteo.net:*/*",
+    "*://*.taboola.com:*/*", "*://*.outbrain.com:*/*", "*://*.scorecardresearch.com:*/*", "*://*.quantserve.com:*/*",
+    "*://*.hotjar.com:*/*", "*://*.clarity.ms:*/*", "*://*.facebook.net:*/*", "*://*.moatads.com:*/*",
+    "*://*.rubiconproject.com:*/*", "*://*.pubmatic.com:*/*", "*://*.casalemedia.com:*/*", "*://*.openx.net:*/*",
+    "*://*.chartbeat.com:*/*", "*://*.newrelic.com:*/*", "*://*.nr-data.net:*/*", "*://*.segment.io:*/*",
+    "*://*.mixpanel.com:*/*", "*://*.fullstory.com:*/*", "*://*.yandex.ru:*/metrika/*", "*://mc.yandex.ru:*/*",
+];
+
+async fn block_heavy(page: &Page) {
+    use chromiumoxide::cdp::browser_protocol::network::{BlockPattern, SetBlockedUrLsParams};
+    let params = SetBlockedUrLsParams { url_patterns: Some(BLOCKED.iter().map(|p| BlockPattern::new(*p, true)).collect()) };
+    if let Err(e) = tokio::time::timeout(Duration::from_secs(2), page.execute(params)).await.map_err(anyhow::Error::from).and_then(|r| r.map_err(anyhow::Error::from)) {
+        tracing::debug!("blocking heavy requests failed: {e:#}");
+    }
+}
+
+/// Text lengths this close count as unchanged: a carousel or a live clock shouldn't keep a
+/// finished page waiting until the cap.
+fn about_same(a: usize, b: usize) -> bool {
+    a.abs_diff(b) <= (b / 100).max(8)
 }
 
 async fn load(page: &Page, url: &str, wait_for: Duration) -> Result<Rendered> {
@@ -127,15 +161,23 @@ async fn load(page: &Page, url: &str, wait_for: Duration) -> Result<Rendered> {
     loop {
         tokio::select! {
             _ = &mut nav, if !nav_done => nav_done = true,
-            _ = tokio::time::sleep(Duration::from_millis(250)) => {}
+            _ = tokio::time::sleep(POLL) => {}
         }
         let len = text_len(page).await;
-        stable = if len > 0 && len == last { stable + 1 } else { 0 };
+        stable = if len > 0 && about_same(len, last) { stable + 1 } else { 0 };
         last = len;
         let waited = start.elapsed();
-        let settled = (nav_done && stable >= 2) || (len > 200 && stable >= 3);
+        let settled = if len < 200 {
+            // Short text is either a shell still loading its content (Salesforce sites sit on a
+            // spinner for seconds) or a final screen: a block or error page. Stop early only for
+            // the second; a shell that stays short ends as an empty-page failure anyway.
+            nav_done && stable >= 2 && (waited > SHORT_WAIT || final_screen(page).await)
+        } else {
+            // Settled: unchanged for ~0.3 s after the load finished, or ~0.45 s before it.
+            (nav_done && stable >= 2) || stable >= 3
+        };
         // Still blank after a few seconds: nothing is coming.
-        let blank = len < 50 && waited > Duration::from_secs(5);
+        let blank = len < 50 && waited > SHORT_WAIT;
         if settled || blank || waited > NAV_CAP {
             break;
         }
@@ -153,6 +195,17 @@ async fn load(page: &Page, url: &str, wait_for: Duration) -> Result<Rendered> {
     }
     let final_url = page.url().await?.unwrap_or_else(|| url.to_string());
     Ok(Rendered { url: final_url, html })
+}
+
+/// A short page that is finished as it is: a block, challenge or error screen.
+async fn final_screen(page: &Page) -> bool {
+    let js = "document.body ? document.body.innerText.slice(0, 2000) : ''";
+    let text = match tokio::time::timeout(Duration::from_millis(800), page.evaluate(js)).await {
+        Ok(Ok(v)) => v.into_value::<String>().unwrap_or_default(),
+        _ => return false,
+    };
+    let lower = text.to_lowercase();
+    crate::extract::is_challenge(&lower) || matches!(crate::extract::failure_page(&text), Some(w) if w != "empty page")
 }
 
 /// Length of the page's visible text; 0 while it can't be read (mid-navigation).

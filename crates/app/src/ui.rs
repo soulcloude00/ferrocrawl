@@ -82,6 +82,10 @@ pub fn view(s: &App, _cx: &mut Cx<App>) -> El {
             .child(crate::bench_ui::body(s, &p, &k));
         return rune_kit::root(base, Vec::new());
     }
+    if s.mode == Mode::Intro {
+        let base = col().key("root").w_full().h_full().fill(p.bg).child(toolbar(s, &p, &k)).child(crate::intro_ui::body(s, &p, &k));
+        return rune_kit::root(base, Vec::new());
+    }
     let body = row()
         .key("body")
         .w_full()
@@ -105,7 +109,33 @@ fn toolbar(s: &App, p: &Pal, k: &Kit) -> El {
         .child(icon(&BOLT, 15.0).color(Color::WHITE));
     let brand = row().gap(9.0).center_y().child(logo).child(text("ferrocrawl").font(BRAND).color(p.text));
 
-    let focused = s.url.focused;
+    let intro_mode = s.mode == Mode::Intro;
+    let focused = if intro_mode { s.intro.input.focused } else { s.url.focused };
+    let input = if intro_mode {
+        text_input(&s.intro.input, BODY)
+            .key("intro-input")
+            .single_line()
+            .grow(1.0)
+            .color(p.text)
+            .placeholder(crate::intro::PLACEHOLDER[s.intro.action], p.faint)
+            .on_edit(|s: &mut App| &mut s.intro.input)
+            .on_submit(|s: &mut App, tx: &mut Tx| {
+                s.start();
+                tx.blur();
+            })
+    } else {
+        text_input(&s.url, BODY)
+            .key("url")
+            .single_line()
+            .grow(1.0)
+            .color(p.text)
+            .placeholder("https://example.com", p.faint)
+            .on_edit(|s: &mut App| &mut s.url)
+            .on_submit(|s: &mut App, tx: &mut Tx| {
+                s.start();
+                tx.blur();
+            })
+    };
     let field = row()
         .key("url-box")
         .grow(1.0)
@@ -119,19 +149,7 @@ fn toolbar(s: &App, p: &Pal, k: &Kit) -> El {
         .border(if focused { 2.0 } else { 1.0 }, if focused { p.accent.alpha(0.7) } else { p.line })
         .center_y()
         .child(icon(&GLOBE, 15.0).color(p.faint))
-        .child(
-            text_input(&s.url, BODY)
-                .key("url")
-                .single_line()
-                .grow(1.0)
-                .color(p.text)
-                .placeholder("https://example.com", p.faint)
-                .on_edit(|s: &mut App| &mut s.url)
-                .on_submit(|s: &mut App, tx: &mut Tx| {
-                    s.start();
-                    tx.blur();
-                }),
-        );
+        .child(input);
 
     let modes = SegmentedControl::new(&MODES, Some(s.mode.index()))
         .label("Mode")
@@ -150,6 +168,9 @@ fn toolbar(s: &App, p: &Pal, k: &Kit) -> El {
 
     let go = if s.mode == Mode::Bench {
         crate::bench_ui::run_button(s, k)
+    } else if intro_mode {
+        let label = if s.intro.running() { "Working…" } else { crate::intro::GO[s.intro.action] };
+        Button::new(label).variant(ButtonVariant::Submit).on_press(|s: &mut App| s.start()).build(k)
     } else if s.running() {
         Button::new("Stop").variant(ButtonVariant::Danger).on_press(|s: &mut App| s.stop()).build(k)
     } else {
@@ -159,6 +180,13 @@ fn toolbar(s: &App, p: &Pal, k: &Kit) -> El {
     let mut controls = row().gap(10.0).center_y().child(modes);
     if s.mode == Mode::Bench {
         controls = controls.child(crate::bench_ui::controls(s, p, k));
+    } else if intro_mode {
+        let actions = SegmentedControl::new(&crate::intro::ACTIONS, Some(s.intro.action))
+            .label("Action")
+            .fit()
+            .on_pick(|s: &mut App, i, _: &mut Tx| s.intro.action = i)
+            .build(k);
+        controls = controls.child(actions);
     } else {
         controls = controls.child(renders);
     }
@@ -289,7 +317,7 @@ fn results(s: &App, p: &Pal) -> El {
         let hint = match s.mode {
             Mode::Scrape => "Scrape turns one page into clean Markdown.",
             Mode::Crawl => "Crawl follows links and streams pages in as they land.",
-            Mode::Map | Mode::Bench => "",
+            Mode::Map | Mode::Intro | Mode::Bench => "",
         };
         empty(p, "Nothing yet", hint)
     } else {
