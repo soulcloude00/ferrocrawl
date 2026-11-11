@@ -4,6 +4,8 @@
 
 mod bench;
 mod bench_ui;
+mod intro;
+mod intro_ui;
 mod ui;
 
 use std::sync::{Arc, Mutex};
@@ -18,7 +20,7 @@ use tokio::task::AbortHandle;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-pub const MODES: [&str; 4] = ["Scrape", "Crawl", "Map", "Benchmark"];
+pub const MODES: [&str; 5] = ["Scrape", "Crawl", "Map", "Intro", "Benchmark"];
 pub const RENDERS: [&str; 3] = ["Auto", "HTTP", "Browser"];
 pub const LIMITS: [usize; 4] = [25, 100, 500, 2000];
 
@@ -27,6 +29,7 @@ pub enum Mode {
     Scrape,
     Crawl,
     Map,
+    Intro,
     Bench,
 }
 
@@ -35,7 +38,7 @@ impl Mode {
         self as usize
     }
     fn from_index(i: usize) -> Self {
-        [Mode::Scrape, Mode::Crawl, Mode::Map, Mode::Bench][i.min(3)]
+        [Mode::Scrape, Mode::Crawl, Mode::Map, Mode::Intro, Mode::Bench][i.min(4)]
     }
 }
 
@@ -117,6 +120,7 @@ pub struct App {
     engine: Arc<Engine>,
     task: Option<AbortHandle>,
     pub bench: bench::Bench,
+    pub intro: intro::Intro,
 }
 
 impl App {
@@ -140,6 +144,7 @@ impl App {
             engine,
             task: None,
             bench: bench::Bench::new(),
+            intro: intro::Intro::new(),
         }
     }
 
@@ -197,9 +202,16 @@ impl App {
         }
     }
 
+    pub fn intro_find(&mut self, q: String) {
+        self.intro.find(q, &self.rt, &self.engine, &self.waker);
+    }
+
     pub fn start(&mut self) {
         if self.mode == Mode::Bench {
             return self.start_bench();
+        }
+        if self.mode == Mode::Intro {
+            return self.intro.start(&self.rt, &self.engine, &self.waker);
         }
         self.stop();
         let url = self.url.text.trim().to_string();
@@ -229,7 +241,7 @@ impl App {
         let limit = LIMITS[self.limit];
         let engine = self.engine.clone();
         let handle = match self.mode {
-            Mode::Bench => unreachable!("benchmarks start through start_bench"),
+            Mode::Bench | Mode::Intro => unreachable!("benchmarks and intros start on their own"),
             Mode::Scrape => self.rt.spawn(async move {
                 match engine.scrape(&url, &scrape).await {
                     Ok(doc) => send(Msg::Row(Row::page(doc, 0))),
@@ -271,6 +283,9 @@ impl App {
 
 fn setup(s: &mut App, waker: Waker) {
     s.waker = Some(waker);
+    if std::env::var("FERROCRAWL_MODE").is_ok_and(|m| m.eq_ignore_ascii_case("intro")) {
+        s.mode = Mode::Intro;
+    }
     // `FERROCRAWL_BENCH=<suite>` opens in Benchmark mode on that suite;
     // `FERROCRAWL_BENCH_RUN=1` also starts it.
     if let Some(suite) = std::env::var("FERROCRAWL_BENCH").ok().and_then(|v| ferrocrawl::bench::Suite::parse(&v)) {
@@ -311,9 +326,9 @@ impl App {
 }
 
 fn poll(s: &mut App, _: f64, tx: &mut Tx) -> bool {
-    let changed = s.drain() | s.bench.drain();
+    let changed = s.drain() | s.bench.drain() | s.intro.drain();
     // Keep the clock ticking while a job runs; an idle window draws nothing.
-    if s.running() || s.bench.running() {
+    if s.running() || s.bench.running() || s.intro.running() {
         tx.wake_after(Duration::from_millis(100));
         return true;
     }
@@ -358,6 +373,19 @@ fn demo(s: &mut App) {
     s.run = Run::Finished { elapsed: Duration::from_millis(760), note: Some("113 URLs discovered".into()) };
 }
 
+/// The Intro tab on whatever graph `FERROCRAWL_INTRO_DB` points at, searching `FERROCRAWL_INTRO_Q`.
+fn demo_intro(s: &mut App) {
+    s.mode = Mode::Intro;
+    let q = std::env::var("FERROCRAWL_INTRO_Q").unwrap_or_else(|_| "Sequoia".into());
+    s.intro.input = TextEdit::new(q.clone());
+    s.intro.query = q.clone();
+    if let Some(g) = s.intro.graph.clone() {
+        s.intro.result = g.paths(&q, 8).ok();
+        s.intro.stats = g.stats().unwrap_or_default();
+    }
+    s.intro.log.push((true, "GitHub — cloudflare/lol-html: 1 items, 29 people, 29 new links".into()));
+}
+
 fn demo_bench(s: &mut App) {
     use ferrocrawl::bench::{CaseResult, Suite};
     s.mode = Mode::Bench;
@@ -395,7 +423,7 @@ fn main() {
         setup: Some(setup),
         poll: Some(poll),
         on_key: Some(on_key),
-        scenes: &[("demo", demo), ("bench", demo_bench)],
+        scenes: &[("demo", demo), ("bench", demo_bench), ("intro", demo_intro)],
         min_size: Some((900.0, 560.0)),
         ..AppSpec::new("ferrocrawl", (1280.0, 820.0), App::new, ui::view)
     });

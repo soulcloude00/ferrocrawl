@@ -23,6 +23,19 @@ const ALWAYS_DROP: &[&str] = &[
     "button", "input", "select", "textarea", "dialog",
 ];
 
+/// Never the page's content, whatever level the main-content pass falls back to: cookie and
+/// consent banners, accessibility-widget prompts.
+const JUNK: &[&str] = &[
+    "[id*=\"cookie\"]",
+    "[class*=\"cookie\"]",
+    "[id*=\"consent\"]",
+    "[class*=\"consent\"]",
+    "[class*=\"cmplz\"]",
+    "[id*=\"onetrust\"]",
+    "[class*=\"skip-link\"]",
+    "[class*=\"acsb-\"]",
+];
+
 /// Page chrome, dropped when only the main content is wanted.
 const CHROME: &[&str] = &[
     "nav",
@@ -67,15 +80,40 @@ pub struct Extracted {
 static NOSCRIPT_TAGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)</?noscript[^>]*>").unwrap());
 
 pub fn extract(raw: &str, page_url: &str, only_main: bool, exclude: &[String]) -> Extracted {
-    let ex = extract_once(raw, page_url, only_main, exclude);
+    let mut ex = extract_once(raw, page_url, only_main, exclude);
     // Some sites (Discourse forums, older SPAs) ship the readable page inside `<noscript>` for
     // clients that don't run scripts. When the normal pass finds next to nothing, use it.
     if words(&ex.text) < 60 && raw.to_ascii_lowercase().contains("<noscript") {
         let unwrapped = NOSCRIPT_TAGS.replace_all(raw, "");
         let alt = extract_once(&unwrapped, page_url, only_main, exclude);
         if alt.text.len() > ex.text.len() + 400 {
-            return alt;
+            ex = alt;
         }
+    }
+    // The page's own summary (`<meta name="description">`, `og:description`) when the content
+    // doesn't already say it: a social post's caption, a product's blurb. Only a real sentence or
+    // more, never a few keywords.
+    if only_main
+        && let Some(d) = ex.description.as_deref()
+        && words(d) >= 12
+        && !collapse(&ex.text).contains(&collapse(d).chars().take(80).collect::<String>())
+    {
+        let d = collapse(d);
+        ex.text = format!("{d} {}", ex.text);
+        ex.markdown = if ex.markdown.is_empty() { d } else { format!("{d}\n\n{}", ex.markdown) };
+    }
+    // Still next to nothing: an app that draws its text from inline state (`ytInitialData`,
+    // hydration blobs). Read the prose out of that.
+    if only_main
+        && words(&ex.text) < 80
+        && let Some(extra) = crate::structured::state_text(raw, &ex.markdown)
+    {
+        ex.text.push(' ');
+        ex.text.push_str(&collapse(&extra));
+        if !ex.markdown.is_empty() {
+            ex.markdown.push_str("\n\n");
+        }
+        ex.markdown.push_str(&extra);
     }
     ex
 }
@@ -226,7 +264,7 @@ fn extract_once(raw: &str, page_url: &str, only_main: bool, exclude: &[String]) 
                     strip(&mut doc, id, std::slice::from_ref(&S.chrome), true);
                     prune_link_farms(&mut doc, id);
                 }
-                Level::Semantic => strip(&mut doc, id, std::slice::from_ref(&S.semantic), true),
+                Level::Semantic => strip(&mut doc, id, std::slice::from_ref(&S.semantic_junk), true),
                 Level::Full => {}
             }
             drop_empty(&mut doc, id);
@@ -261,7 +299,6 @@ fn extract_once(raw: &str, page_url: &str, only_main: bool, exclude: &[String]) 
         }
         markdown.push_str(&extra);
     }
-
     Extracted {
         markdown,
         html,
@@ -289,9 +326,11 @@ struct Sels {
     blocks: Selector,
     a: Selector,
     emptyable: Selector,
-    semantic: Selector,
+
     img: Selector,
+    img_alt: Selector,
     chrome: Selector,
+    semantic_junk: Selector,
 }
 
 static S: LazyLock<Sels> = LazyLock::new(|| {
@@ -312,9 +351,11 @@ static S: LazyLock<Sels> = LazyLock::new(|| {
         a: s("a"),
         // Layout tables (SEC filings are full of them) leave rows and tables with no text.
         emptyable: s("li, ul, ol, h1, h2, h3, h4, h5, h6, tr, table"),
-        semantic: s("nav, footer, aside, body > header, [role=\"navigation\"], [role=\"banner\"], [role=\"contentinfo\"], [hidden]"),
+
         img: s("img"),
+        img_alt: s("img[alt]:not([alt=\"\"])"),
         chrome: s(&CHROME.join(", ")),
+        semantic_junk: s(&format!("nav, footer, aside, body > header, [role=\"navigation\"], [role=\"banner\"], [role=\"contentinfo\"], [hidden], {}", JUNK.join(", "))),
     }
 });
 
@@ -391,6 +432,16 @@ fn drop_empty(doc: &mut Html, root: ego_tree::NodeId) {
     }
 }
 
+/// A real picture (a photo, a product shot), not a menu icon or a logo.
+fn is_picture(img: ElementRef) -> bool {
+    let v = img.value();
+    let src = v.attr("src").unwrap_or("").to_ascii_lowercase();
+    if ["icon", "logo", "sprite", "chevron", "arrow", "flag", "avatar"].iter().any(|k| src.contains(k)) {
+        return false;
+    }
+    v.attr("width").and_then(|w| w.trim_end_matches("px").parse::<u32>().ok()).is_none_or(|w| w >= 100)
+}
+
 /// Drops blocks that are almost all links (language pickers, navboxes, tag clouds, related-post
 /// grids), unless that would leave next to nothing: then the links are the page.
 fn prune_link_farms(doc: &mut Html, root: ego_tree::NodeId) {
@@ -406,6 +457,14 @@ fn prune_link_farms(doc: &mut Html, root: ego_tree::NodeId) {
         let anchors: Vec<_> = e.select(&S.a).collect();
         // A short list of links is usually content ("further reading"); menus run long.
         if n == 0 || anchors.len() < 15 {
+            continue;
+        }
+        // A grid of linked pictures (a gallery, a product listing) is content: its words are in
+        // the images' alt text, which text length doesn't count.
+        // Only links that are just a picture: a card with a headline ("Related articles") is
+        // a link list with thumbnails, and stays prunable.
+        let pictured = anchors.iter().filter(|a| text_len(**a) < 15 && a.select(&S.img_alt).any(is_picture)).count();
+        if pictured >= 5 && pictured * 3 >= anchors.len() {
             continue;
         }
         let linked: usize = anchors.iter().map(|a| text_len(*a)).sum();
@@ -517,6 +576,11 @@ pub fn failure_page(text: &str) -> Option<&'static str> {
         "don’t have access to this page",
         "don't have access to this page",
         "403 forbidden",
+        // F5 / Akamai / WAF denial screens.
+        "requested url was rejected",
+        "your support id is",
+        "incident number",
+        "please return to the previous page to try again",
     ];
     const ERROR: &[&str] = &[
         "404 not found",
@@ -544,6 +608,23 @@ pub fn failure_page(text: &str) -> Option<&'static str> {
     None
 }
 
+/// Block pages a real browser on the same machine gets too: captcha walls (DataDome,
+/// PerimeterX), Incapsula, Cloudflare's "you have been blocked" error page, Akamai's deny page.
+/// Over five 1,000-page benchmark runs a render never got past one of these; it did get past
+/// Cloudflare's JavaScript challenge ("Just a moment…"), which is why that isn't here.
+pub fn is_hard_block(lower: &str) -> bool {
+    const MARKS: &[&str] = &[
+        "captcha-delivery.com",
+        "px-captcha",
+        "_incapsula_resource",
+        "request unsuccessful. incapsula",
+        "cf-error-details",
+        "you don't have permission to access",
+        "you don&#39;t have permission to access",
+    ];
+    MARKS.iter().any(|m| lower.contains(m)) && !lower.contains("cf-chl-")
+}
+
 /// Bot-wall and challenge pages from the common CDNs and anti-bot vendors.
 pub fn is_challenge(lower: &str) -> bool {
     const MARKS: &[&str] = &[
@@ -557,6 +638,7 @@ pub fn is_challenge(lower: &str) -> bool {
         "px-captcha",
         "access denied</h1>",
         "request unsuccessful. incapsula",
+        "_incapsula_resource",
     ];
     MARKS.iter().any(|m| lower.contains(m))
 }
@@ -682,5 +764,40 @@ mod tests {
         let ex = extract(html, "https://x.dev/", true, &[]);
         assert!(looks_client_rendered(html, &ex));
     }
-}
 
+    #[test]
+    fn keeps_picture_galleries_but_prunes_icon_menus() {
+        let card = |i: usize, img: &str| format!(r#"<a href="/p/{i}"><img src="https://x.dev/{img}{i}.jpg" width="400" alt="Mountain lake at dawn number {i}"></a>"#);
+        let gallery: String = (0..20).map(|i| card(i, "photo")).collect();
+        // A mega-menu: an icon and a label per link.
+        let menu: String = (0..20).map(|i| format!(r#"<a href="/m/{i}"><img src="https://x.dev/nav-icon-{i}.png" width="40" alt="Product line {i}">Product line {i} overview</a>"#)).collect();
+        let prose = "<p>".to_string() + &"Words about the collection and the artist behind it. ".repeat(12) + "</p>";
+        let html = format!("<html><body><main>{prose}<div class=grid>{gallery}</div><div class=mega>{menu}</div></main></body></html>");
+        let ex = extract(&html, "https://x.dev/", true, &[]);
+        assert!(ex.markdown.contains("Mountain lake at dawn number 7"), "gallery kept");
+        assert!(!ex.markdown.contains("Product line 7 overview"), "icon menu pruned");
+    }
+
+    #[test]
+    fn consent_banners_go_even_when_falling_back() {
+        let html = r#"<html><body><div class="cmplz-cookiebanner" role="region"><p>Manage Consent. To provide the best experiences, we use technologies like cookies to store and access device information on your device.</p></div><div><p>Host your next event at the Delta Grand Theater in Opelousas. The theater seats four hundred guests, with a stage, dressing rooms and a lobby for receptions. Check availability, then see the rental agreement below for rates, deposits and the rules for decorations and catering.</p></div></body></html>"#;
+        let ex = extract(html, "https://x.dev/", true, &[]);
+        assert!(ex.markdown.contains("Delta Grand"));
+        assert!(!ex.markdown.contains("Manage Consent"));
+    }
+
+    #[test]
+    fn firewall_denials_are_failures() {
+        assert_eq!(failure_page("L.L.Bean Please use the link above to continue. Please return to the previous page to try again or contact Email Text"), Some("blocked by the site"));
+        assert_eq!(failure_page("The requested URL was rejected. Please consult with your administrator. Your support ID is: 1234567890"), Some("blocked by the site"));
+    }
+
+    #[test]
+    fn hard_blocks_skip_the_browser_but_js_challenges_dont() {
+        assert!(is_hard_block("<h1>access denied</h1> you don't have permission to access \"http://x/\" on this server. reference #18.1"));
+        assert!(is_hard_block("<script src=\"https://ct.captcha-delivery.com/c.js\"></script>"));
+        assert!(is_hard_block("<div id=\"cf-error-details\">sorry, you have been blocked</div>"));
+        assert!(!is_hard_block("<title>just a moment...</title><script src=\"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=1\"></script> cf-chl-opt"));
+        assert!(!is_hard_block("<p>403 forbidden</p>"));
+    }
+}
