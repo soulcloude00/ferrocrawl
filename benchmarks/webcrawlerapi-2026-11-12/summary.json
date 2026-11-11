@@ -1,0 +1,100 @@
+{
+  "suite": "webcrawlerapi",
+  "total": 1000,
+  "done": 1000,
+  "ok": 693,
+  "errors": 174,
+  "skipped": 133,
+  "rendered": 78,
+  "latency": {
+    "p50": 1147,
+    "p90": 7196,
+    "p95": 8598,
+    "p99": 12226,
+    "mean": 2455
+  },
+  "judged": 0,
+  "score": 93.93939393939394,
+  "recall": 75.90186064540305,
+  "f1": 0.5611631149425772,
+  "categories": {
+    "end-to-end": [
+      651,
+      867
+    ]
+  },
+  "board": [
+    {
+      "name": "context.dev",
+      "ours": false,
+      "score": 94.92,
+      "recall": 82.54,
+      "f1": 0.1753,
+      "p50_ms": 3065,
+      "p95_ms": 17154
+    },
+    {
+      "name": "context.dev (main content)",
+      "ours": false,
+      "score": 92.62,
+      "recall": 78.76,
+      "f1": 0.5669,
+      "p50_ms": 3561,
+      "p95_ms": 29805
+    },
+    {
+      "name": "WebCrawlerAPI",
+      "ours": false,
+      "score": 92.6,
+      "recall": 72.59,
+      "f1": 0.6218,
+      "p50_ms": 8295,
+      "p95_ms": 49277
+    },
+    {
+      "name": "Crawl4AI Cloud",
+      "ours": false,
+      "score": 92.26,
+      "recall": 75.66,
+      "f1": 0.5605,
+      "p50_ms": 1604,
+      "p95_ms": 31010
+    },
+    {
+      "name": "Firecrawl",
+      "ours": false,
+      "score": 89.03,
+      "recall": 74.94,
+      "f1": 0.515,
+      "p50_ms": 3548,
+      "p95_ms": 15957
+    },
+    {
+      "name": "Spider",
+      "ours": false,
+      "score": 88.7,
+      "recall": 73.04,
+      "f1": 0.5202,
+      "p50_ms": 5755,
+      "p95_ms": 94763
+    },
+    {
+      "name": "Jina Reader",
+      "ours": false,
+      "score": 87.43,
+      "recall": 73.53,
+      "f1": 0.1783,
+      "p50_ms": 5388,
+      "p95_ms": 20505
+    },
+    {
+      "name": "Crawlbase",
+      "ours": false,
+      "score": 74.87,
+      "recall": 46.55,
+      "f1": 0.4646,
+      "p50_ms": 9841,
+      "p95_ms": 130494
+    }
+  ]
+}

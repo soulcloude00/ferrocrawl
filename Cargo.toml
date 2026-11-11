@@ -1,12 +1,13 @@
 [workspace]
 resolver = "3"
-members = ["crates/core", "crates/cli", "crates/app"]
-default-members = ["crates/core", "crates/cli"]
+members = ["crates/core", "crates/intro", "crates/cli", "crates/app"]
+default-members = ["crates/core", "crates/intro", "crates/cli"]
 
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
-license = "LicenseRef-Proprietary"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/soulcloude00/ferrocrawl"
 publish = false
 
 # Plain release builds stay light: LTO with one codegen unit needs several GB of RAM to link the
