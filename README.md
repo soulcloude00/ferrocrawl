@@ -29,10 +29,18 @@ Measured from a home connection (`--release`):
 | Crawl MDN HTTP docs, 300 pages | 2.4 s, 125 pages/s |
 | Crawl Python stdlib docs, 328 pages | 3.3 s, 100 pages/s |
 
+## Install
+
+```sh
+cargo install --git https://github.com/soulcloude00/snarf snarf   # the snarf command (CLI, HTTP API, MCP server)
+```
+
+Needs Rust (`rustup`). Chromium is optional: only pages that need JavaScript use it.
+
 ## Use
 
 ```sh
-cargo build --release                        # CLI + server (no GUI deps)
+cargo build --release                        # or build from a clone: CLI + server (no GUI deps)
 cargo build --release -p snarf-app      # the Rune desktop app
 
 snarf scrape https://example.com                    # Markdown to stdout
@@ -119,7 +127,7 @@ The graph lives in SQLite at `~/.local/share/snarf/intro.db`. Change it with `--
 
 ## For AI agents (MCP)
 
-`snarf mcp` is a Model Context Protocol server on stdio:
+`snarf mcp` is a Model Context Protocol server on stdio. With `snarf` installed (above):
 
 ```sh
 claude mcp add snarf -- snarf mcp
