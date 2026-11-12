@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use ferrocrawl::Engine;
+use snarf::Engine;
 use intro::{Graph, HarvestOptions, PathResult, Relation, Stats};
 use rune::{TextEdit, Waker};
 use tokio::runtime::Runtime;

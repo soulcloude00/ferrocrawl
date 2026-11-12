@@ -1,5 +1,5 @@
 [package]
-name = "ferrocrawl"
+name = "snarf"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,8 +7,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-ferrocrawl-core = { path = "../core" }
-ferrocrawl-intro = { path = "../intro" }
+snarf-core = { path = "../core" }
+snarf-intro = { path = "../intro" }
 anyhow = "1"
 axum = "0.8"
 clap = { version = "4", features = ["derive"] }

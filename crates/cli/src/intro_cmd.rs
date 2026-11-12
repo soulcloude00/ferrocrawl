@@ -1,11 +1,11 @@
-//! `ferrocrawl intro …`: build the warm-intro graph and ask it who can get you to someone.
+//! `snarf intro …`: build the warm-intro graph and ask it who can get you to someone.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
 use clap::Subcommand;
-use ferrocrawl::Engine;
+use snarf::Engine;
 use intro::{EdgeKind, Graph, HarvestOptions, PersonIn, Relation};
 
 #[derive(Subcommand)]

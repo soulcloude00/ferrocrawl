@@ -1,14 +1,14 @@
-//! `ferrocrawl mcp`: a Model Context Protocol server on stdio, so an AI agent (Claude Code,
+//! `snarf mcp`: a Model Context Protocol server on stdio, so an AI agent (Claude Code,
 //! Claude Desktop, any MCP client) can scrape, crawl and ask the intro graph directly.
 //!
-//! Register it with: `claude mcp add ferrocrawl -- ferrocrawl mcp`
+//! Register it with: `claude mcp add snarf -- snarf mcp`
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
-use ferrocrawl::{CrawlEvent, CrawlOptions, Engine, Format, MapOptions, ScrapeOptions};
+use snarf::{CrawlEvent, CrawlOptions, Engine, Format, MapOptions, ScrapeOptions};
 use futures::StreamExt;
 use intro::{EdgeKind, Graph, HarvestOptions, PersonIn, Relation};
 use serde_json::{Value, json};
@@ -103,7 +103,7 @@ impl Server {
                 };
                 let max = num("maxChars", 80_000);
                 let (tx, mut rx) = mpsc::channel(64);
-                let job = tokio::spawn(ferrocrawl::crawl(self.engine.clone(), need("url")?, opts, tx));
+                let job = tokio::spawn(snarf::crawl(self.engine.clone(), need("url")?, opts, tx));
                 let mut out = String::new();
                 while let Some(ev) = rx.recv().await {
                     if let CrawlEvent::Page { document, .. } = ev {
@@ -119,7 +119,7 @@ impl Server {
             }
             "map" => {
                 let opts = MapOptions { limit: num("limit", 2000), search: str_arg("search"), ..Default::default() };
-                let links = ferrocrawl::map(&self.engine, &need("url")?, &opts).await?;
+                let links = snarf::map(&self.engine, &need("url")?, &opts).await?;
                 Ok(format!("{} URLs\n{}", links.len(), links.join("\n")))
             }
             "find_intro_path" => {
@@ -205,7 +205,7 @@ pub async fn serve(engine: Arc<Engine>, db: Option<PathBuf>) -> Result<()> {
                 "initialize" => Ok(json!({
                     "protocolVersion": params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL),
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "ferrocrawl", "version": env!("CARGO_PKG_VERSION")},
+                    "serverInfo": {"name": "snarf", "version": env!("CARGO_PKG_VERSION")},
                     "instructions": "Fast web scraping (scrape, batch_scrape, crawl, map) and a warm-intro graph. To find who can introduce the user to someone: find_intro_path; if the target is missing, harvest_people on a page listing them (team/portfolio page) first."
                 })),
                 "ping" => Ok(json!({})),

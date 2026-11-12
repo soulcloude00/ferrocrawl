@@ -1,4 +1,4 @@
-//! `ferrocrawl bench run|prep-judge|report`.
+//! `snarf bench run|prep-judge|report`.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -7,8 +7,8 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use clap::Subcommand;
-use ferrocrawl::Engine;
-use ferrocrawl::bench::{self, BenchEvent, CaseResult, RunOptions, Suite};
+use snarf::Engine;
+use snarf::bench::{self, BenchEvent, CaseResult, RunOptions, Suite};
 use tokio::sync::mpsc;
 
 #[derive(Subcommand)]
@@ -24,7 +24,7 @@ pub enum BenchCmd {
         /// Only cases in this category.
         #[arg(long)]
         category: Option<String>,
-        /// Run directory (default: ~/.local/share/ferrocrawl/bench/<suite>-<time>).
+        /// Run directory (default: ~/.local/share/snarf/bench/<suite>-<time>).
         #[arg(short, long)]
         out: Option<PathBuf>,
     },
@@ -86,7 +86,7 @@ pub async fn main(engine: Arc<Engine>, cmd: BenchCmd) -> Result<()> {
                     s.ok
                 );
             }
-            let mut rows: Vec<(&ferrocrawl::bench::CaseResult, &ferrocrawl::bench::CaseResult)> =
+            let mut rows: Vec<(&snarf::bench::CaseResult, &snarf::bench::CaseResult)> =
                 main.iter().zip(full.iter()).filter(|(m, _)| m.status == "ok").collect();
             rows.sort_by(|a, b| a.0.recall.unwrap_or(0.0).total_cmp(&b.0.recall.unwrap_or(0.0)));
             // One JSON line per scored row, for analysis scripts.
@@ -122,12 +122,12 @@ async fn report(engine: &Engine, suite: Suite, dir: &std::path::Path, total: usi
     writeln!(o, "\n{} · {} pages · {} ok · {} errors · {} skipped · {} rendered", suite.name(), s.total, s.ok, s.errors, s.skipped, s.rendered)?;
     writeln!(o, "latency p50 {} ms · p90 {} · p95 {} · p99 {} · mean {}", s.latency.p50, s.latency.p90, s.latency.p95, s.latency.p99, s.latency.mean)?;
     if suite.judged() && s.judged == 0 {
-        writeln!(o, "quality: not judged yet (run `ferrocrawl bench prep-judge {}`, then grade)", dir.display())?;
+        writeln!(o, "quality: not judged yet (run `snarf bench prep-judge {}`, then grade)", dir.display())?;
     }
     writeln!(o, "\n{:<28} {:>8} {:>8} {:>7} {:>8} {:>8}", "provider", "score", "recall", "F1", "p50", "p95")?;
     let mut board = s.board.clone();
     board.push(bench::Entry {
-        name: "ferrocrawl".into(),
+        name: "snarf".into(),
         ours: true,
         score: s.score,
         recall: s.recall,

@@ -120,7 +120,7 @@ async fn robots(engine: &Engine, start: &Url) -> Option<Robot> {
     if got.status >= 400 {
         return None;
     }
-    Robot::new("ferrocrawl", got.body.as_bytes()).ok()
+    Robot::new("snarf", got.body.as_bytes()).ok()
 }
 
 /// Crawls from `start`, sending each page to `out` as it lands. Stops early when `out` is closed.

@@ -6,7 +6,7 @@
 //! - LinkedIn's own data export (`Connections.csv`), yours and any your friends share with you
 //! - email (`.mbox`), calendar (`.ics`) and contacts (`.vcf`) exports: who you actually talk to
 //! - GitHub: contributors to the same repositories, members of an organization
-//! - public web pages ferrocrawl reads: team pages, portfolio pages, speaker lists
+//! - public web pages snarf reads: team pages, portfolio pages, speaker lists
 //! - connections you add by hand
 //!
 //! [`Graph::paths`] then ranks routes from you to a person or an organization, best first.
@@ -218,16 +218,16 @@ impl Graph {
         Ok(Self { db: Mutex::new(db) })
     }
 
-    /// `$FERROCRAWL_INTRO_DB`, else `~/.local/share/ferrocrawl/intro.db`.
+    /// `$SNARF_INTRO_DB`, else `~/.local/share/snarf/intro.db`.
     pub fn default_path() -> std::path::PathBuf {
-        if let Ok(p) = std::env::var("FERROCRAWL_INTRO_DB") {
+        if let Ok(p) = std::env::var("SNARF_INTRO_DB") {
             return p.into();
         }
         let base = std::env::var("XDG_DATA_HOME")
             .map(std::path::PathBuf::from)
             .or_else(|_| std::env::var("HOME").map(|h| std::path::PathBuf::from(h).join(".local/share")))
             .unwrap_or_else(|_| ".".into());
-        base.join("ferrocrawl/intro.db")
+        base.join("snarf/intro.db")
     }
 
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {

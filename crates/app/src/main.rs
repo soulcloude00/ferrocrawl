@@ -1,4 +1,4 @@
-//! ferrocrawl desktop: type a URL, scrape, crawl or map it, and watch pages land live.
+//! snarf desktop: type a URL, scrape, crawl or map it, and watch pages land live.
 //! The scraping runs on a Tokio runtime beside the UI; results arrive through an inbox that
 //! `poll` drains before each frame.
 
@@ -11,7 +11,7 @@ mod ui;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ferrocrawl::{CrawlEvent, CrawlOptions, Document, Engine, EngineConfig, Format, MapOptions, Render, ScrapeOptions};
+use snarf::{CrawlEvent, CrawlOptions, Document, Engine, EngineConfig, Format, MapOptions, Render, ScrapeOptions};
 use rune::{AppSpec, Key, KeyEvent, TextEdit, Tx, Waker};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
@@ -119,6 +119,8 @@ pub struct App {
     rt: Arc<Runtime>,
     engine: Arc<Engine>,
     task: Option<AbortHandle>,
+    /// Demo mode (for recordings): start the job at this moment, then step through pages.
+    demo: Option<Demo>,
     pub bench: bench::Bench,
     pub intro: intro::Intro,
 }
@@ -145,6 +147,7 @@ impl App {
             task: None,
             bench: bench::Bench::new(),
             intro: intro::Intro::new(),
+            demo: None,
         }
     }
 
@@ -152,7 +155,7 @@ impl App {
         matches!(self.run, Run::Running { .. })
     }
 
-    pub fn pick_suite(&mut self, suite: ferrocrawl::bench::Suite) {
+    pub fn pick_suite(&mut self, suite: snarf::bench::Suite) {
         self.bench.select(suite, &self.rt, &self.engine, &self.waker);
     }
 
@@ -252,7 +255,7 @@ impl App {
             Mode::Crawl => self.rt.spawn(async move {
                 let opts = CrawlOptions { limit, max_depth: 50, concurrency: 32, scrape, ..Default::default() };
                 let (tx, mut rx) = mpsc::channel(256);
-                let crawl = tokio::spawn(ferrocrawl::crawl(engine, url, opts, tx));
+                let crawl = tokio::spawn(snarf::crawl(engine, url, opts, tx));
                 while let Some(ev) = rx.recv().await {
                     send(Msg::Row(match ev {
                         CrawlEvent::Page { depth, document } => Row::page(*document, depth),
@@ -268,7 +271,7 @@ impl App {
             }),
             Mode::Map => self.rt.spawn(async move {
                 let opts = MapOptions { limit: limit.max(500) * 10, ..Default::default() };
-                match ferrocrawl::map(&engine, &url, &opts).await {
+                match snarf::map(&engine, &url, &opts).await {
                     Ok(links) => {
                         send(Msg::Links(links));
                         send(Msg::Done(None));
@@ -281,17 +284,37 @@ impl App {
     }
 }
 
+/// `SNARF_DEMO_URL=<url>` starts a crawl of it `SNARF_DEMO_DELAY` ms after launch
+/// (default 2000) and, once it's done, moves the selection down one page every
+/// `SNARF_DEMO_STEP` ms (default 900) so the preview changes. For screen recordings.
+struct Demo {
+    start_at: Option<Instant>,
+    step: Duration,
+    next_step: Option<Instant>,
+}
+
 fn setup(s: &mut App, waker: Waker) {
     s.waker = Some(waker);
-    if std::env::var("FERROCRAWL_MODE").is_ok_and(|m| m.eq_ignore_ascii_case("intro")) {
+    if let Ok(url) = std::env::var("SNARF_DEMO_URL") {
+        let ms = |k: &str, d: u64| std::env::var(k).ok().and_then(|v| v.parse().ok()).unwrap_or(d);
+        s.url = TextEdit::new(url);
+        s.mode = Mode::Crawl;
+        s.limit = 2;
+        s.demo = Some(Demo {
+            start_at: Some(Instant::now() + Duration::from_millis(ms("SNARF_DEMO_DELAY", 2000))),
+            step: Duration::from_millis(ms("SNARF_DEMO_STEP", 900)),
+            next_step: None,
+        });
+    }
+    if std::env::var("SNARF_MODE").is_ok_and(|m| m.eq_ignore_ascii_case("intro")) {
         s.mode = Mode::Intro;
     }
-    // `FERROCRAWL_BENCH=<suite>` opens in Benchmark mode on that suite;
-    // `FERROCRAWL_BENCH_RUN=1` also starts it.
-    if let Some(suite) = std::env::var("FERROCRAWL_BENCH").ok().and_then(|v| ferrocrawl::bench::Suite::parse(&v)) {
+    // `SNARF_BENCH=<suite>` opens in Benchmark mode on that suite;
+    // `SNARF_BENCH_RUN=1` also starts it.
+    if let Some(suite) = std::env::var("SNARF_BENCH").ok().and_then(|v| snarf::bench::Suite::parse(&v)) {
         s.mode = Mode::Bench;
         s.pick_suite(suite);
-        if std::env::var_os("FERROCRAWL_BENCH_RUN").is_some() {
+        if std::env::var_os("SNARF_BENCH_RUN").is_some() {
             s.start_bench();
         }
     }
@@ -326,7 +349,29 @@ impl App {
 }
 
 fn poll(s: &mut App, _: f64, tx: &mut Tx) -> bool {
-    let changed = s.drain() | s.bench.drain() | s.intro.drain();
+    let mut changed = s.drain() | s.bench.drain() | s.intro.drain();
+    if let Some(d) = s.demo.as_mut() {
+        let now = Instant::now();
+        if let Some(t) = d.start_at {
+            if now >= t {
+                d.start_at = None;
+                s.start();
+                changed = true;
+            } else {
+                tx.wake_after(t - now);
+            }
+        } else if matches!(s.run, Run::Finished { .. }) && !s.rows.is_empty() {
+            let next = *d.next_step.get_or_insert(now + d.step);
+            if now >= next {
+                d.next_step = Some(now + d.step);
+                let i = (s.selected.unwrap_or(0) + 1).min(s.rows.len() - 1);
+                s.selected = Some(i);
+                tx.scroll_into_view(&ui::row_key(i));
+                changed = true;
+            }
+            tx.wake_after(d.step.min(Duration::from_millis(200)));
+        }
+    }
     // Keep the clock ticking while a job runs; an idle window draws nothing.
     if s.running() || s.bench.running() || s.intro.running() {
         tx.wake_after(Duration::from_millis(100));
@@ -373,10 +418,10 @@ fn demo(s: &mut App) {
     s.run = Run::Finished { elapsed: Duration::from_millis(760), note: Some("113 URLs discovered".into()) };
 }
 
-/// The Intro tab on whatever graph `FERROCRAWL_INTRO_DB` points at, searching `FERROCRAWL_INTRO_Q`.
+/// The Intro tab on whatever graph `SNARF_INTRO_DB` points at, searching `SNARF_INTRO_Q`.
 fn demo_intro(s: &mut App) {
     s.mode = Mode::Intro;
-    let q = std::env::var("FERROCRAWL_INTRO_Q").unwrap_or_else(|_| "Sequoia".into());
+    let q = std::env::var("SNARF_INTRO_Q").unwrap_or_else(|_| "Sequoia".into());
     s.intro.input = TextEdit::new(q.clone());
     s.intro.query = q.clone();
     if let Some(g) = s.intro.graph.clone() {
@@ -387,10 +432,10 @@ fn demo_intro(s: &mut App) {
 }
 
 fn demo_bench(s: &mut App) {
-    use ferrocrawl::bench::{CaseResult, Suite};
+    use snarf::bench::{CaseResult, Suite};
     s.mode = Mode::Bench;
     s.bench.suite = Suite::Webcrawlerapi;
-    let board = s.rt.block_on(ferrocrawl::bench::board(&s.engine, Suite::Webcrawlerapi));
+    let board = s.rt.block_on(snarf::bench::board(&s.engine, Suite::Webcrawlerapi));
     s.bench.boards_mut().insert(Suite::Webcrawlerapi, board);
     let hosts = ["edimark.fr/revues", "bbc.com/news/world", "docs.rs/tokio", "lemonde.fr/economie", "github.com/rust-lang", "nature.com/articles"];
     let mut results = Vec::new();
@@ -425,7 +470,7 @@ fn main() {
         on_key: Some(on_key),
         scenes: &[("demo", demo), ("bench", demo_bench), ("intro", demo_intro)],
         min_size: Some((900.0, 560.0)),
-        ..AppSpec::new("ferrocrawl", (1280.0, 820.0), App::new, ui::view)
+        ..AppSpec::new("snarf", (1280.0, 820.0), App::new, ui::view)
     });
     app.run();
 }
@@ -443,7 +488,7 @@ mod tests {
         assert!(!app.running(), "job finished");
     }
 
-    /// Hits the network: `cargo test -p ferrocrawl-app -- --ignored`.
+    /// Hits the network: `cargo test -p snarf-app -- --ignored`.
     #[test]
     #[ignore]
     fn crawl_and_map_land_in_the_ui_state() {

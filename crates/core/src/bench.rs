@@ -130,7 +130,7 @@ fn cache_dir() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("ferrocrawl").join("bench")
+    base.join("snarf").join("bench")
 }
 
 async fn cached_download(engine: &Engine, url: &str, name: &str) -> Result<String> {
@@ -561,13 +561,13 @@ pub fn rescore(dir: &Path) -> Result<(Vec<CaseResult>, Vec<CaseResult>)> {
     Ok((main, full))
 }
 
-/// Where runs are saved: `~/.local/share/ferrocrawl/bench/<suite>-<name>`.
+/// Where runs are saved: `~/.local/share/snarf/bench/<suite>-<name>`.
 pub fn runs_root() -> PathBuf {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
         .unwrap_or_else(std::env::temp_dir);
-    base.join("ferrocrawl").join("bench")
+    base.join("snarf").join("bench")
 }
 
 /// A saved run: its suite, case count and results.

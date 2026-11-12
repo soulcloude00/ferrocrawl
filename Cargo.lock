@@ -1428,80 +1428,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ferrocrawl"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "ferrocrawl-core",
- "ferrocrawl-intro",
- "futures",
- "mimalloc",
- "serde",
- "serde_json",
- "tokio",
- "tokio-stream",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "ferrocrawl-app"
-version = "0.1.0"
-dependencies = [
- "ferrocrawl-core",
- "ferrocrawl-intro",
- "mimalloc",
- "rune",
- "rune-kit",
- "tokio",
-]
-
-[[package]]
-name = "ferrocrawl-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chromiumoxide",
- "csv",
- "ego-tree",
- "encoding_rs",
- "futures",
- "htmd",
- "lol_html",
- "moka",
- "regex",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "texting_robots",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "ferrocrawl-intro"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "csv",
- "ferrocrawl-core",
- "regex",
- "reqwest",
- "rusqlite",
- "scraper",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "unicode-normalization",
- "url",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4569,6 +4495,80 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "snarf"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "futures",
+ "mimalloc",
+ "serde",
+ "serde_json",
+ "snarf-core",
+ "snarf-intro",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "snarf-app"
+version = "0.1.0"
+dependencies = [
+ "mimalloc",
+ "rune",
+ "rune-kit",
+ "snarf-core",
+ "snarf-intro",
+ "tokio",
+]
+
+[[package]]
+name = "snarf-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chromiumoxide",
+ "csv",
+ "ego-tree",
+ "encoding_rs",
+ "futures",
+ "htmd",
+ "lol_html",
+ "moka",
+ "regex",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "texting_robots",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "snarf-intro"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "csv",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "snarf-core",
+ "tokio",
+ "tracing",
+ "unicode-normalization",
+ "url",
 ]
 
 [[package]]
