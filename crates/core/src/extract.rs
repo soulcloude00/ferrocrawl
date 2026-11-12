@@ -287,6 +287,7 @@ fn extract_once(raw: &str, page_url: &str, only_main: bool, exclude: &[String]) 
         let text = root.map(|e| collapse(&e.text().collect::<Vec<_>>().join(" "))).unwrap_or_default();
         break (html, text);
     };
+    let html = fence_bare_pre(&html);
     let mut markdown = to_markdown(&html);
     let mut text = text;
     // What the site publishes as structured data but the body doesn't show (product and job
@@ -482,6 +483,62 @@ fn prune_link_farms(doc: &mut Html, root: ego_tree::NodeId) {
             node.detach();
         }
     }
+}
+
+static PRE_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<pre\b([^>]*)>").unwrap());
+static LANG_CLASS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\b(?:language|lang|highlight(?:-source)?|brush:)[-:\s]*([a-z0-9+#]+)").unwrap());
+
+/// The language a code block is written in, as a fence names it: `python3` -> `python`, `default`/`none` -> none.
+fn fence_lang(raw: &str) -> Option<String> {
+    let l = raw.to_ascii_lowercase();
+    let l = match l.as_str() {
+        "default" | "none" | "text" | "plain" | "notranslate" | "source" => return None,
+        "python3" | "py" | "py3" | "pycon" | "ipython" | "ipython3" => "python",
+        "sh" | "shell" | "bash" | "shell-session" | "console" => "console",
+        "js" | "javascript" => "javascript",
+        "rs" => "rust",
+        other => other,
+    };
+    Some(l.to_string())
+}
+
+/// A `<pre>` with no `<code>` inside comes out of the converter as plain text: its code unfenced, and a Python
+/// prompt's `>>>` read as a blockquote. Sphinx (the Python docs and most of the Python world) writes code like that,
+/// with the language on the wrapper (`<div class="highlight-python3"><div class="highlight"><pre>`). Wrap such blocks
+/// in `<code class="language-…">`, the language from the `<pre>`'s own class or the nearest `highlight-*` before it.
+fn fence_bare_pre(html: &str) -> String {
+    if !html.contains("<pre") {
+        return html.to_string();
+    }
+    let mut out = String::with_capacity(html.len() + 256);
+    let mut at = 0;
+    while let Some(m) = PRE_OPEN.find_at(html, at) {
+        let body_start = m.end();
+        let Some(close) = html[body_start..].find("</pre>").map(|i| body_start + i) else { break };
+        out.push_str(&html[at..body_start]);
+        let body = &html[body_start..close];
+        if body.trim_start().to_ascii_lowercase().starts_with("<code") {
+            out.push_str(body);
+        } else {
+            let attrs = &html[m.start()..m.end()];
+            let before = &html[m.start().saturating_sub(300)..m.start()];
+            let lang = LANG_CLASS
+                .captures(attrs)
+                .and_then(|c| fence_lang(&c[1]))
+                .or_else(|| before.rfind("highlight-").and_then(|i| LANG_CLASS.captures(&before[i..])).and_then(|c| fence_lang(&c[1])));
+            match lang {
+                Some(l) => out.push_str(&format!("<code class=\"language-{l}\">")),
+                None => out.push_str("<code>"),
+            }
+            out.push_str(body);
+            out.push_str("</code>");
+        }
+        out.push_str("</pre>");
+        at = close + "</pre>".len();
+    }
+    out.push_str(&html[at..]);
+    out
 }
 
 /// HTML to tidy Markdown, for other modules.
@@ -799,5 +856,18 @@ mod tests {
         assert!(is_hard_block("<div id=\"cf-error-details\">sorry, you have been blocked</div>"));
         assert!(!is_hard_block("<title>just a moment...</title><script src=\"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=1\"></script> cf-chl-opt"));
         assert!(!is_hard_block("<p>403 forbidden</p>"));
+    }
+
+    #[test]
+    fn fences_sphinx_code_blocks() {
+        let html = r#"<html><body><main><p>For example:</p><div class="highlight-python3 notranslate"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">if</span> <span class="n">x</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="s1">'yes'</span><span class="p">)</span>
+</pre></div></div><p>And a plain block:</p><pre>make all</pre><p>Already fenced:</p><pre><code class="language-rust">fn main() {}</code></pre></main></body></html>"#;
+        let md = extract(html, "https://docs.python.org/3/tutorial/x.html", true, &[]).markdown;
+        assert!(md.contains("```python\n>>> x = 1\n>>> if x:\n...     print('yes')"), "{md}");
+        assert!(md.contains("```\nmake all\n```"), "{md}");
+        assert!(md.contains("```rust\nfn main() {}\n```"), "{md}");
+        assert!(!md.contains("\n> "), "no prompt read as a blockquote: {md}");
     }
 }
