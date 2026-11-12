@@ -1,5 +1,5 @@
 [package]
-name = "ferrocrawl-intro"
+name = "snarf-intro"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,7 +10,7 @@ publish.workspace = true
 name = "intro"
 
 [dependencies]
-ferrocrawl-core = { path = "../core" }
+snarf-core = { path = "../core" }
 anyhow = "1"
 csv = "1.4.0"
 regex = "1"

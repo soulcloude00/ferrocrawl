@@ -23,7 +23,7 @@ const CHALLENGE_CAP: Duration = Duration::from_secs(4);
 const POLL: Duration = Duration::from_millis(150);
 /// How long a page with almost no text gets to fill in before we stop waiting.
 const SHORT_WAIT: Duration = Duration::from_secs(6);
-/// Chromium's own cap (`FERROCRAWL_CHROME_MEM` overrides).
+/// Chromium's own cap (`SNARF_CHROME_MEM` overrides).
 const CHROME_MEM: &str = "1200M";
 
 fn is_waiting_screen(html: &str) -> bool {
@@ -51,7 +51,7 @@ impl Renderer {
         if let Some(b) = slot.as_ref() {
             return Ok(b.clone());
         }
-        // A profile of our own, so two ferrocrawl processes (the app and the CLI) never fight
+        // A profile of our own, so two snarf processes (the app and the CLI) never fight
         // over one, and leftovers of a process that died are cleaned up first.
         reap_stale_profiles();
         let profile = profile_dir(std::process::id());
@@ -218,16 +218,16 @@ async fn text_len(page: &Page) -> usize {
 }
 
 fn profile_dir(pid: u32) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("ferrocrawl-chrome-{pid}"))
+    std::env::temp_dir().join(format!("snarf-chrome-{pid}"))
 }
 
-/// Stops Chromium instances whose ferrocrawl died without closing them (killed, crashed) and
+/// Stops Chromium instances whose snarf died without closing them (killed, crashed) and
 /// removes their profiles. Matches on the profile path, so no other browser is touched.
 fn reap_stale_profiles() {
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        let Some(pid) = name.strip_prefix("ferrocrawl-chrome-").and_then(|p| p.parse::<u32>().ok()) else { continue };
+        let Some(pid) = name.strip_prefix("snarf-chrome-").and_then(|p| p.parse::<u32>().ok()) else { continue };
         if pid == std::process::id() || std::path::Path::new(&format!("/proc/{pid}")).exists() {
             continue;
         }
@@ -260,12 +260,12 @@ impl Drop for Renderer {
     }
 }
 
-/// Caps the memory of the systemd scope Chromium puts itself in (`FERROCRAWL_CHROME_MEM`,
-/// default 1.2 GB; `FERROCRAWL_CHROME_MEM=0` leaves it alone). Chromium creates the scope a moment
+/// Caps the memory of the systemd scope Chromium puts itself in (`SNARF_CHROME_MEM`,
+/// default 1.2 GB; `SNARF_CHROME_MEM=0` leaves it alone). Chromium creates the scope a moment
 /// after starting, so this waits for it. Only a scope Chromium made is touched, never the one
 /// the app or a terminal runs in.
 fn cap_memory(pid: u32) {
-    let mem = std::env::var("FERROCRAWL_CHROME_MEM").unwrap_or_else(|_| CHROME_MEM.into());
+    let mem = std::env::var("SNARF_CHROME_MEM").unwrap_or_else(|_| CHROME_MEM.into());
     if mem == "0" {
         return;
     }

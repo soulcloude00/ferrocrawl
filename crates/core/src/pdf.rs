@@ -111,7 +111,7 @@ impl TempPdf {
     fn new(bytes: &[u8]) -> Result<Self> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let dir = if Path::new("/dev/shm").is_dir() { PathBuf::from("/dev/shm") } else { std::env::temp_dir() };
-        let path = dir.join(format!("ferrocrawl-{}-{}.pdf", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
+        let path = dir.join(format!("snarf-{}-{}.pdf", std::process::id(), SEQ.fetch_add(1, Ordering::Relaxed)));
         std::fs::write(&path, bytes)?;
         Ok(TempPdf(path))
     }

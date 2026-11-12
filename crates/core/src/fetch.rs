@@ -52,10 +52,10 @@ pub fn client() -> reqwest::Client {
 // Some sites publish a fair-access policy for automated clients instead of blocking them: SEC
 // EDGAR asks for a User-Agent naming the operator and a contact email, and at most 10 requests a
 // second (https://www.sec.gov/os/accessing-edgar-data). For those hosts we say who we are and
-// keep to their rate. The contact comes from `FERROCRAWL_CONTACT` or
-// `~/.config/ferrocrawl/contact` ("Name, email"); without one, requests go out as before.
+// keep to their rate. The contact comes from `SNARF_CONTACT` or
+// `~/.config/snarf/contact` ("Name, email"); without one, requests go out as before.
 
-/// Hosts with a published declared-bot policy. `FERROCRAWL_DECLARED_HOSTS` (comma-separated)
+/// Hosts with a published declared-bot policy. `SNARF_DECLARED_HOSTS` (comma-separated)
 /// adds more.
 const DECLARED_HOSTS: &[&str] = &["sec.gov"];
 /// Requests per second allowed on a declared host (SEC's published limit is 10).
@@ -65,12 +65,12 @@ fn contact() -> Option<&'static str> {
     static CONTACT: OnceLock<Option<String>> = OnceLock::new();
     CONTACT
         .get_or_init(|| {
-            let from_env = std::env::var("FERROCRAWL_CONTACT").ok();
+            let from_env = std::env::var("SNARF_CONTACT").ok();
             let from_file = || {
                 let home = std::env::var_os("XDG_CONFIG_HOME")
                     .map(std::path::PathBuf::from)
                     .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))?;
-                std::fs::read_to_string(home.join("ferrocrawl").join("contact")).ok()
+                std::fs::read_to_string(home.join("snarf").join("contact")).ok()
             };
             from_env.or_else(from_file).map(|c| c.trim().to_string()).filter(|c| c.contains('@'))
         })
@@ -81,7 +81,7 @@ fn declared_hosts() -> &'static [String] {
     static HOSTS: OnceLock<Vec<String>> = OnceLock::new();
     HOSTS.get_or_init(|| {
         let mut v: Vec<String> = DECLARED_HOSTS.iter().map(|h| h.to_string()).collect();
-        if let Ok(extra) = std::env::var("FERROCRAWL_DECLARED_HOSTS") {
+        if let Ok(extra) = std::env::var("SNARF_DECLARED_HOSTS") {
             v.extend(extra.split(',').map(|h| h.trim().to_ascii_lowercase()).filter(|h| !h.is_empty()));
         }
         v
@@ -114,7 +114,7 @@ pub async fn get(client: &reqwest::Client, url: &str, timeout: Duration) -> Resu
     let mut req = client.get(url).timeout(timeout);
     if let (Some(site), Some(who)) = (declared_site(url), contact()) {
         pace(site).await;
-        req = req.header(reqwest::header::USER_AGENT, format!("ferrocrawl/{} ({who})", env!("CARGO_PKG_VERSION")));
+        req = req.header(reqwest::header::USER_AGENT, format!("snarf/{} ({who})", env!("CARGO_PKG_VERSION")));
     }
     let resp = req.send().await.with_context(|| format!("GET {url}"))?;
     let status = resp.status().as_u16();

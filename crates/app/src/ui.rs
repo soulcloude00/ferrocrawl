@@ -1,4 +1,4 @@
-//! ferrocrawl's look: a toolbar with the URL field and run controls, a strip of live stats, the
+//! snarf's look: a toolbar with the URL field and run controls, a strip of live stats, the
 //! results list on the left and the selected page's Markdown on the right. Dark, rust accent.
 
 use rune::{Color, Cx, El, GrowthSpec, Icon, ScrollSpec, TextStyle, Tx, col, el, icon, memo, oklch, oklcha, row, spacer, text, text_input};
@@ -30,12 +30,12 @@ pub fn pal() -> Pal {
         well: oklch(0.245, 0.008, 260.0),
         line: oklcha(1.0, 0.0, 0.0, 0.08),
         hover: oklcha(1.0, 0.0, 0.0, 0.05),
-        selected: oklcha(0.70, 0.16, 45.0, 0.16),
+        selected: oklcha(0.86, 0.17, 95.0, 0.14),
         text: oklch(0.96, 0.004, 260.0),
         dim: oklch(0.76, 0.006, 260.0),
         faint: oklch(0.56, 0.008, 260.0),
-        accent: oklch(0.71, 0.165, 45.0),
-        accent_soft: oklcha(0.71, 0.165, 45.0, 0.16),
+        accent: oklch(0.86, 0.17, 95.0),
+        accent_soft: oklcha(0.86, 0.17, 95.0, 0.14),
         good: oklch(0.76, 0.14, 150.0),
         bad: oklch(0.68, 0.19, 25.0),
         info: oklch(0.74, 0.11, 240.0),
@@ -43,7 +43,7 @@ pub fn pal() -> Pal {
 }
 
 pub fn kit() -> Kit {
-    Kit::from_palette(PaletteSeed { bg: oklch(0.18, 0.006, 260.0), fg: oklch(0.96, 0.004, 260.0), accent: oklch(0.71, 0.165, 45.0) })
+    Kit::from_palette(PaletteSeed { bg: oklch(0.18, 0.006, 260.0), fg: oklch(0.96, 0.004, 260.0), accent: oklch(0.86, 0.17, 95.0) })
 }
 
 pub const BRAND: TextStyle = TextStyle::new(15.0, 720.0).tracking(-0.3);
@@ -61,6 +61,7 @@ macro_rules! ico {
     };
 }
 ico!(GLOBE, r#"<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.6 5.2 3.6 8.5s-1.2 6.1-3.6 8.5c-2.4-2.4-3.6-5.2-3.6-8.5s1.2-6.1 3.6-8.5z" stroke="currentColor" stroke-width="1.8" fill="none"/>"#);
+ico!(HASH, r#"<path d="M10 3.6 7.9 20.4M16.1 3.6 14 20.4M4.6 9h15.6M3.8 15h15.6" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" fill="none"/>"#);
 ico!(BOLT, r#"<path d="M13.2 2.8 5.6 13.1a.6.6 0 0 0 .5 1h4.9l-1.3 7.1 7.7-10.4a.6.6 0 0 0-.5-1h-4.9z" fill="currentColor"/>"#);
 ico!(WARN, r#"<circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.9" fill="none"/><path d="M12 7.5v5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.3" r="1.2" fill="currentColor"/>"#);
 ico!(PAGE, r#"<path d="M6.5 3.5h7l4 4v13h-11z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/><path d="M9 12h6M9 15.5h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>"#);
@@ -104,10 +105,10 @@ fn toolbar(s: &App, p: &Pal, k: &Kit) -> El {
     let logo = el()
         .size(26.0, 26.0)
         .radius(7.0)
-        .gradient(oklch(0.76, 0.16, 55.0), oklch(0.6, 0.18, 35.0))
+        .gradient(oklch(0.9, 0.16, 98.0), oklch(0.82, 0.17, 88.0))
         .center()
-        .child(icon(&BOLT, 15.0).color(Color::WHITE));
-    let brand = row().gap(9.0).center_y().child(logo).child(text("ferrocrawl").font(BRAND).color(p.text));
+        .child(icon(&HASH, 15.0).color(oklch(0.16, 0.01, 95.0)));
+    let brand = row().gap(9.0).center_y().child(logo).child(text("snarf").font(BRAND).color(p.text));
 
     let intro_mode = s.mode == Mode::Intro;
     let focused = if intro_mode { s.intro.input.focused } else { s.url.focused };

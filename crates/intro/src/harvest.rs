@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock};
 
 use anyhow::{Result, bail};
-use ferrocrawl::{CrawlEvent, CrawlOptions, Engine, Format, ScrapeOptions};
+use snarf::{CrawlEvent, CrawlOptions, Engine, Format, ScrapeOptions};
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 use serde::{Deserialize, Serialize};
@@ -469,7 +469,7 @@ pub fn ingest(graph: &Graph, ex: &Extracted, org: &str, relation: Relation, page
 pub async fn harvest(engine: Arc<Engine>, graph: &Graph, url: &str, opts: &HarvestOptions) -> Result<HarvestReport> {
     let t0 = std::time::Instant::now();
     if Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.ends_with("linkedin.com"))).unwrap_or(false) {
-        bail!("LinkedIn pages aren't harvested (it breaks LinkedIn's terms and gets accounts restricted). Import the Connections.csv from LinkedIn's data export instead: `ferrocrawl intro import <file>`");
+        bail!("LinkedIn pages aren't harvested (it breaks LinkedIn's terms and gets accounts restricted). Import the Connections.csv from LinkedIn's data export instead: `snarf intro import <file>`");
     }
     let scrape = ScrapeOptions { formats: vec![Format::RawHtml], max_age_ms: 600_000, ..Default::default() };
     let mut rep = HarvestReport::default();
@@ -487,7 +487,7 @@ pub async fn harvest(engine: Arc<Engine>, graph: &Graph, url: &str, opts: &Harve
     } else {
         let copts = CrawlOptions { limit: opts.limit, include_paths: opts.include_paths.clone(), scrape, ..Default::default() };
         let (tx, mut rx) = mpsc::channel(64);
-        let job = tokio::spawn(ferrocrawl::crawl(engine, url.to_string(), copts, tx));
+        let job = tokio::spawn(snarf::crawl(engine, url.to_string(), copts, tx));
         while let Some(ev) = rx.recv().await {
             match ev {
                 CrawlEvent::Page { document, .. } => {

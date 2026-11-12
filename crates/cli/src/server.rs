@@ -7,7 +7,7 @@
 //! - `POST /v1/batch/scrape` `{ "urls": [...], ...ScrapeOptions }` → `{ success, data: [Document | {error}] }`,
 //!   16 pages in flight, results in request order
 //!
-//! Set `FERROCRAWL_API_KEY` to require `Authorization: Bearer <key>`.
+//! Set `SNARF_API_KEY` to require `Authorization: Bearer <key>`.
 
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use ferrocrawl::{CrawlOptions, Engine, MapOptions, ScrapeOptions};
+use snarf::{CrawlOptions, Engine, MapOptions, ScrapeOptions};
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
@@ -45,13 +45,13 @@ pub async fn serve(engine: Arc<Engine>, addr: &str) -> Result<()> {
         .layer(middleware::from_fn(auth))
         .with_state(engine);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    eprintln!("ferrocrawl listening on http://{addr}");
+    eprintln!("snarf listening on http://{addr}");
     axum::serve(listener, app).await?;
     Ok(())
 }
 
 async fn auth(req: Request, next: Next) -> Response {
-    if let Ok(key) = std::env::var("FERROCRAWL_API_KEY")
+    if let Ok(key) = std::env::var("SNARF_API_KEY")
         && req.uri().path() != "/health"
     {
         let ok = req
@@ -78,7 +78,7 @@ async fn scrape(State(engine): State<App>, Json(req): Json<WithUrl<ScrapeOptions
 }
 
 async fn map(State(engine): State<App>, Json(req): Json<WithUrl<MapOptions>>) -> Response {
-    match ferrocrawl::map(&engine, &req.url, &req.opts).await {
+    match snarf::map(&engine, &req.url, &req.opts).await {
         Ok(links) => Json(json!({ "success": true, "links": links })).into_response(),
         Err(e) => fail(StatusCode::BAD_GATEWAY, format!("{e:#}")),
     }
@@ -88,7 +88,7 @@ async fn crawl(State(engine): State<App>, Json(req): Json<WithUrl<CrawlOptions>>
     let (tx, rx) = mpsc::channel(64);
     let (lines_tx, lines_rx) = mpsc::channel::<String>(64);
     tokio::spawn(async move {
-        let job = tokio::spawn(ferrocrawl::crawl(engine, req.url, req.opts, tx));
+        let job = tokio::spawn(snarf::crawl(engine, req.url, req.opts, tx));
         let mut events = ReceiverStream::new(rx);
         while let Some(ev) = events.next().await {
             let line = serde_json::to_string(&ev).unwrap_or_default() + "\n";

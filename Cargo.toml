@@ -7,7 +7,7 @@ default-members = ["crates/core", "crates/intro", "crates/cli"]
 edition = "2024"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/soulcloude00/ferrocrawl"
+repository = "https://github.com/soulcloude00/snarf"
 publish = false
 
 # Plain release builds stay light: LTO with one codegen unit needs several GB of RAM to link the

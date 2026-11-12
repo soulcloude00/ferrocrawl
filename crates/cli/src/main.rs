@@ -9,14 +9,14 @@ use std::time::Instant;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
-use ferrocrawl::{CrawlEvent, CrawlOptions, Engine, EngineConfig, Format, MapOptions, Render, ScrapeOptions};
+use snarf::{CrawlEvent, CrawlOptions, Engine, EngineConfig, Format, MapOptions, Render, ScrapeOptions};
 use tokio::sync::mpsc;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[derive(Parser)]
-#[command(name = "ferrocrawl", version, about = "A fast web scraper: pages to clean Markdown")]
+#[command(name = "snarf", version, about = "A fast web scraper: pages to clean Markdown")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -131,7 +131,7 @@ enum Cmd {
     },
     /// Warm intros: import networks, harvest public pages, find who can introduce you.
     Intro {
-        /// Graph database (default $FERROCRAWL_INTRO_DB or ~/.local/share/ferrocrawl/intro.db).
+        /// Graph database (default $SNARF_INTRO_DB or ~/.local/share/snarf/intro.db).
         #[arg(long, global = true)]
         db: Option<PathBuf>,
         #[command(subcommand)]
@@ -217,7 +217,7 @@ async fn main() -> Result<()> {
                 std::fs::create_dir_all(dir)?;
             }
             let (tx, mut rx) = mpsc::channel(256);
-            let job = tokio::spawn(ferrocrawl::crawl(engine.clone(), url, opts, tx));
+            let job = tokio::spawn(snarf::crawl(engine.clone(), url, opts, tx));
             let mut stdout = std::io::stdout().lock();
             while let Some(ev) = rx.recv().await {
                 match (&out, &ev) {
@@ -248,7 +248,7 @@ async fn main() -> Result<()> {
         Cmd::Map { url, limit, search, subdomains } => {
             let t0 = Instant::now();
             let opts = MapOptions { limit, search, include_subdomains: subdomains, ..Default::default() };
-            let links = ferrocrawl::map(&engine, &url, &opts).await?;
+            let links = snarf::map(&engine, &url, &opts).await?;
             let mut out = std::io::stdout().lock();
             for l in &links {
                 writeln!(out, "{l}")?;

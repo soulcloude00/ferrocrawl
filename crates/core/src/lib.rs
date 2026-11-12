@@ -1,4 +1,4 @@
-//! ferrocrawl: a fast web scraper. Plain HTTP and a streaming HTML rewriter do almost all the
+//! snarf: a fast web scraper. Plain HTTP and a streaming HTML rewriter do almost all the
 //! work; headless Chromium starts only for pages that need JavaScript.
 
 pub mod bench;

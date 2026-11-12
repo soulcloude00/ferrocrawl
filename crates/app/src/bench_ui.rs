@@ -8,7 +8,7 @@
 //! │ run info                 │                                                  │
 //! └──────────────────────────┴──────────────────────────────────────────────────┘
 
-use ferrocrawl::bench::{Entry, Suite};
+use snarf::bench::{Entry, Suite};
 use rune::{Color, El, GrowthSpec, ScrollSpec, TextStyle, Tx, col, el, icon, memo, row, spacer, text};
 use rune_kit::{Button, ButtonVariant, Kit, Progress, SegmentedControl, Spinner};
 
@@ -221,7 +221,7 @@ fn leaderboard(s: &App) -> El {
     let sm = &b.summary;
     let mut board: Vec<Entry> = sm.board.clone();
     board.push(Entry {
-        name: "ferrocrawl".into(),
+        name: "snarf".into(),
         ours: true,
         score: sm.score,
         recall: sm.recall,
@@ -265,7 +265,7 @@ fn leaderboard(s: &App) -> El {
         rows = rows.child(r);
     }
     let aside = match rank {
-        Some(r) if sm.score.is_some() => format!("ferrocrawl #{r} of {}", board.len()),
+        Some(r) if sm.score.is_some() => format!("snarf #{r} of {}", board.len()),
         _ => format!("{} providers", board.len()),
     };
     let mut body = col().w_full().gap(10.0).child(rows);

@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use ferrocrawl::Engine;
-use ferrocrawl::bench::{self, BenchEvent, CaseResult, Entry, RunOptions, Suite, Summary, Verdict};
+use snarf::Engine;
+use snarf::bench::{self, BenchEvent, CaseResult, Entry, RunOptions, Suite, Summary, Verdict};
 use rune::Waker;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;

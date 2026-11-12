@@ -4,9 +4,9 @@
     python3 scripts/bench_charts.py        # needs rsvg-convert for the PNGs
 
 Each chart is written for a light and a dark page (README picks one with <picture>).
-Form: emphasis - ferrocrawl in the accent blue, every other provider in gray. Scores are dot
+Form: emphasis - snarf in the accent blue, every other provider in gray. Scores are dot
 plots (close values, so the axis doesn't start at zero); latencies are bars from zero. Two
-measures are two panels, never two y-axes. Only ferrocrawl's values are labeled; the tables in
+measures are two panels, never two y-axes. Only snarf's values are labeled; the tables in
 benchmarks/RESULTS.md carry every number.
 """
 
@@ -139,7 +139,7 @@ def load(run):
     return json.loads((BENCH / run / "summary.json").read_text())
 
 
-def board_rows(summary, ours_name="ferrocrawl"):
+def board_rows(summary, ours_name="snarf"):
     rows = [(b["name"], False, b["score"], b["p50_ms"] / 1000) for b in summary["board"]]
     rows.append((ours_name, True, summary["score"], summary["latency"]["p50"] / 1000))
     return sorted(rows, key=lambda r: -r[2])

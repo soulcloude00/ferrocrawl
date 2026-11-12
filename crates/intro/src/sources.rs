@@ -604,7 +604,7 @@ async fn gh(client: &reqwest::Client, path: &str) -> Result<Value> {
     let mut req = client
         .get(format!("https://api.github.com/{path}"))
         .header("accept", "application/vnd.github+json")
-        .header("user-agent", "ferrocrawl")
+        .header("user-agent", "snarf")
         .header("x-github-api-version", "2022-11-28");
     if let Ok(tok) = std::env::var("GITHUB_TOKEN") {
         req = req.header("authorization", format!("Bearer {tok}"));
